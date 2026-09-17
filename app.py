@@ -54,7 +54,6 @@ def init_state():
         if k not in st.session_state:
             st.session_state[k] = v
 
-
 init_state()
 
 # =========================================================
@@ -187,14 +186,12 @@ def add_transaction(t_type, amount, category_label, note, user):
         }
     )
 
-
 def get_df():
     if not st.session_state.transactions:
         return pd.DataFrame(
             columns=["id", "type", "amount", "category", "note", "user", "date"]
         )
     return pd.DataFrame(st.session_state.transactions)
-
 
 def total_savings():
     df = get_df()
@@ -203,17 +200,14 @@ def total_savings():
     mask = (df["type"] == "gider") & (df["category"].str.contains("Birikim", na=False))
     return df.loc[mask, "amount"].sum()
 
-
 def has_unseen_wishlist():
     return any(not item["seen"] for item in st.session_state.wishlist)
-
 
 def logout():
     st.session_state.current_user = None
     st.session_state.page = "Ana Sayfa"
     st.session_state.entry_mode = None
     st.rerun()
-
 
 # =========================================================
 # GİRİŞ (PROFİL SEÇİM) EKRANI
@@ -246,7 +240,6 @@ def login_screen():
                 st.session_state.page = "Ana Sayfa"
                 st.rerun()
 
-
 # =========================================================
 # ÜST BAR
 # =========================================================
@@ -260,7 +253,6 @@ def top_bar():
         """,
         unsafe_allow_html=True,
     )
-
 
 # =========================================================
 # SIDEBAR
@@ -300,7 +292,6 @@ def sidebar_nav():
         st.markdown("---")
         if st.button("🚪 Çıkış Yap", use_container_width=True):
             logout()
-
 
 # =========================================================
 # ANA SAYFA
@@ -365,7 +356,7 @@ def page_ana_sayfa():
         st.markdown("---")
         st.markdown("#### 🕓 Son İşlemler")
         recent = df.sort_values("date", ascending=False).head(6)
-       for _, row in recent.iterrows():
+        for _, row in recent.iterrows():
             col1, col2 = st.columns([0.85, 0.15], gap="small")
             
             with col1:
@@ -389,8 +380,6 @@ def page_ana_sayfa():
                 if st.button("🗑️", key=f"del_{row['id']}"):
                     st.session_state.transactions = [t for t in st.session_state.transactions if t['id'] != row['id']]
                     st.rerun()
-            
-
 
 # =========================================================
 # ÖZETLER
@@ -460,7 +449,6 @@ def page_ozetler():
 
     st.plotly_chart(fig, use_container_width=True)
 
-
 # =========================================================
 # BİRİKİM
 # =========================================================
@@ -502,7 +490,6 @@ def page_birikim():
             """,
             unsafe_allow_html=True,
         )
-
 
 # =========================================================
 # İSTEK LİSTESİ
@@ -552,7 +539,6 @@ def page_istek_listesi():
             """,
             unsafe_allow_html=True,
         )
-
 
 # =========================================================
 # ANA AKIŞ
