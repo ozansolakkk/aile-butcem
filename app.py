@@ -3,6 +3,9 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import uuid
+import json
+import gspread
+from google.oauth2.service_account import Credentials
 
 # =========================================================
 # SAYFA AYARLARI
@@ -40,28 +43,145 @@ AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran
          7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
 # =========================================================
+# GOOGLE SHEETS BULUT BAĞLANTISI (ÖLÜMSÜZLÜK MODU)
+# =========================================================
+SHEET_ID = "1ijZSXjpmgimn9lNQVaC6n9Vac04YCr1DdTmVYljp0TE"
+
+@st.cache_resource
+def get_sheet():
+    creds_dict = json.loads(st.secrets["google_sifresi"])
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SHEET_ID)
+
+def load_data_from_sheets():
+    try:
+        sh = get_sheet()
+        # İŞLEMLER SEKRESİ (Yoksa otomatik oluşturur)
+        try: 
+            ws_trans = sh.worksheet("Islemler")
+        except gspread.exceptions.WorksheetNotFound:
+            ws_trans = sh.add_worksheet("Islemler", 1000, 10)
+            ws_trans.append_row(["id", "type", "amount", "category", "note", "user", "date"])
+        
+        t_records = ws_trans.get_all_records()
+        for r in t_records:
+            try: r['amount'] = float(r['amount'])
+            except: r['amount'] = 0.0
+            try: r['date'] = datetime.strptime(str(r['date']), '%Y-%m-%d %H:%M:%S')
+            except: r['date'] = datetime.now()
+        st.session_state.transactions = t_records
+
+        # İSTEKLER SEKMESİ (Yoksa otomatik oluşturur)
+        try: 
+            ws_wish = sh.worksheet("Istekler")
+        except gspread.exceptions.WorksheetNotFound:
+            ws_wish = sh.add_worksheet("Istekler", 1000, 10)
+            ws_wish.append_row(["id", "user", "item", "category", "amount", "date", "seen"])
+            
+        w_records = ws_wish.get_all_records()
+        for w in w_records:
+            try: w['amount'] = float(w['amount'])
+            except: w['amount'] = 0.0
+            w['seen'] = str(w['seen']).lower() == 'true'
+            try: w['date'] = datetime.strptime(str(w['date']), '%Y-%m-%d %H:%M:%S')
+            except: w['date'] = datetime.now()
+        st.session_state.wishlist = w_records
+        
+    except Exception as e:
+        st.error(f"Google Sheets bağlantı hatası: Sisteme yetki verirken ufak bir sorun oluştu.")
+
+def sync_transactions():
+    with st.spinner("Bulut ile eşitleniyor..."):
+        try:
+            sh = get_sheet()
+            ws = sh.worksheet("Islemler")
+            t_data = [["id", "type", "amount", "category", "note", "user", "date"]]
+            for t in st.session_state.transactions:
+                t_data.append([str(t['id']), str(t['type']), float(t['amount']), str(t['category']), str(t['note']), str(t['user']), t['date'].strftime('%Y-%m-%d %H:%M:%S')])
+            ws.clear()
+            ws.append_rows(t_data)
+        except Exception as e:
+            st.error(f"Buluta kaydedilirken hata oluştu.")
+
+def sync_wishlist():
+    with st.spinner("Bulut ile eşitleniyor..."):
+        try:
+            sh = get_sheet()
+            ws = sh.worksheet("Istekler")
+            w_data = [["id", "user", "item", "category", "amount", "date", "seen"]]
+            for w in st.session_state.wishlist:
+                w_data.append([str(w['id']), str(w['user']), str(w['item']), str(w['category']), float(w['amount']), w['date'].strftime('%Y-%m-%d %H:%M:%S'), str(w['seen'])])
+            ws.clear()
+            ws.append_rows(w_data)
+        except Exception as e:
+            st.error(f"Buluta kaydedilirken hata oluştu.")
+
+# İşlem Fonksiyonları (Artık anında buluta yazıyor)
+def add_transaction(t_type, amount, cat, note):
+    st.session_state.transactions.append({"id": str(uuid.uuid4()), "type": t_type, "amount": float(amount), "category": cat, "note": note, "user": st.session_state.current_user, "date": datetime.now()})
+    sync_transactions()
+
+def update_txn(t_id, amount, cat, note):
+    for i, t in enumerate(st.session_state.transactions):
+        if t['id'] == t_id:
+            st.session_state.transactions[i]['amount'] = float(amount)
+            st.session_state.transactions[i]['category'] = cat
+            st.session_state.transactions[i]['note'] = note
+            break
+    sync_transactions()
+
+def delete_txn(t_id):
+    st.session_state.transactions = [t for t in st.session_state.transactions if t['id'] != t_id]
+    sync_transactions()
+
+def add_wish(item, cat, amount):
+    st.session_state.wishlist.append({"id": str(uuid.uuid4()), "user": st.session_state.current_user, "item": item.strip(), "category": cat, "amount": float(amount), "date": datetime.now(), "seen": False})
+    sync_wishlist()
+    
+def update_wish(w_id, item, amount):
+    for k, w in enumerate(st.session_state.wishlist):
+        if w['id'] == w_id:
+            st.session_state.wishlist[k]['item'] = item
+            st.session_state.wishlist[k]['amount'] = float(amount)
+    sync_wishlist()
+
+def delete_wish(w_id):
+    st.session_state.wishlist = [w for w in st.session_state.wishlist if w['id'] != w_id]
+    sync_wishlist()
+    
+def get_df():
+    if not st.session_state.transactions:
+        df = pd.DataFrame(columns=["id", "type", "amount", "category", "note", "user", "date"])
+        df["date"] = pd.to_datetime(df["date"])
+        return df
+    df = pd.DataFrame(st.session_state.transactions)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+# =========================================================
 # SESSION STATE BAŞLANGICI
 # =========================================================
 def init_state():
     defaults = {
-        "current_user": None,
-        "page": "Ana Sayfa",
-        "transactions": [],   
-        "wishlist": [],       
-        "entry_mode": None,
-        "edit_txn_id": None,
-        "edit_wish_id": None,
-        "delete_confirm_id": None,
-        "birikim_mode": None,
+        "current_user": None, "page": "Ana Sayfa", "transactions": [], "wishlist": [],       
+        "entry_mode": None, "edit_txn_id": None, "edit_wish_id": None,
+        "delete_confirm_id": None, "birikim_mode": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+            
+    if "data_loaded" not in st.session_state:
+        with st.spinner("Buluttan veriler yükleniyor..."):
+            load_data_from_sheets()
+        st.session_state.data_loaded = True
 
 init_state()
 
 # =========================================================
-# CSS 
+# CSS (TASARIM)
 # =========================================================
 st.markdown(
     """
@@ -93,35 +213,11 @@ st.markdown(
     .edit-box { background: #F8F9FA; border: 2px dashed #D2D6DC; border-radius: 16px; padding: 1rem; margin-bottom: 0.6rem; }
     .delete-box { background: #FDF2F2; border: 2px dashed #B5495B; border-radius: 16px; padding: 1rem; margin-bottom: 0.6rem; text-align: center;}
     
-    /* Expander şıklaştırması */
     div[data-testid="stExpander"] { background: #FFFFFF; border-radius: 16px !important; border: 1px solid #E5E8F0 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03); margin-bottom: 0.8rem !important; }
     div[data-testid="stExpander"] summary { font-weight: 600; color: #33415C; }
     </style>
     """, unsafe_allow_html=True
 )
-
-# =========================================================
-# YARDIMCI FONKSİYONLAR
-# =========================================================
-def get_df():
-    if not st.session_state.transactions:
-        df = pd.DataFrame(columns=["id", "type", "amount", "category", "note", "user", "date"])
-        df["date"] = pd.to_datetime(df["date"])
-        return df
-    df = pd.DataFrame(st.session_state.transactions)
-    df["date"] = pd.to_datetime(df["date"])
-    return df
-
-def update_txn(t_id, amount, cat, note):
-    for i, t in enumerate(st.session_state.transactions):
-        if t['id'] == t_id:
-            st.session_state.transactions[i]['amount'] = float(amount)
-            st.session_state.transactions[i]['category'] = cat
-            st.session_state.transactions[i]['note'] = note
-            break
-
-def delete_txn(t_id):
-    st.session_state.transactions = [t for t in st.session_state.transactions if t['id'] != t_id]
 
 # =========================================================
 # SAYFALAR
@@ -143,15 +239,12 @@ def page_ana_sayfa():
     df = get_df()
     now = datetime.now()
     
-    # Anlık Durum
     c1, c2 = st.columns([0.7, 0.3])
     with c1: st.markdown("<div style='color: #7C8AA5; font-size: 1.1rem; font-weight:bold; margin-top:5px;'>Anlık Durum</div>", unsafe_allow_html=True)
     with c2: durum_tipi = st.selectbox("Seç", ["Aylık", "Toplam"], label_visibility="collapsed")
     
-    if durum_tipi == "Aylık":
-        df_kasa = df[(df['date'].dt.month == now.month) & (df['date'].dt.year == now.year)]
-    else:
-        df_kasa = df
+    if durum_tipi == "Aylık": df_kasa = df[(df['date'].dt.month == now.month) & (df['date'].dt.year == now.year)]
+    else: df_kasa = df
         
     gelir_toplam = df_kasa[df_kasa["type"] == "gelir"]["amount"].sum()
     gider_toplam = df_kasa[df_kasa["type"] == "gider"]["amount"].sum()
@@ -165,7 +258,6 @@ def page_ana_sayfa():
         </div>
     """, unsafe_allow_html=True)
 
-    # Butonlar
     colA, colB = st.columns(2)
     with colA:
         if st.button("💚 Gelir Gir", use_container_width=True): st.session_state.entry_mode = "gelir"
@@ -173,14 +265,13 @@ def page_ana_sayfa():
         if st.button("💸 Harcama Gir", use_container_width=True): st.session_state.entry_mode = "gider"
     st.markdown("---")
 
-    # Giriş Formları
     if st.session_state.entry_mode == "gelir":
         with st.form("gelir_form", clear_on_submit=True):
             amount = st.number_input("Tutar (₺)", min_value=0.0, step=10.0, format="%.2f")
             note = st.text_input("Not (opsiyonel)")
             if st.form_submit_button("✅ Kaydet", use_container_width=True):
                 if amount > 0:
-                    st.session_state.transactions.append({"id": str(uuid.uuid4()), "type": "gelir", "amount": float(amount), "category": "💚 Gelir", "note": note, "user": st.session_state.current_user, "date": datetime.now()})
+                    add_transaction("gelir", amount, "💚 Gelir", note)
                     st.session_state.entry_mode = None
                     st.rerun()
     elif st.session_state.entry_mode == "gider":
@@ -189,17 +280,15 @@ def page_ana_sayfa():
         note = st.text_input("Not (opsiyonel)")
         if st.button("✅ Kaydet", use_container_width=True):
             if amount > 0:
-                st.session_state.transactions.append({"id": str(uuid.uuid4()), "type": "gider", "amount": float(amount), "category": selected_label, "note": note, "user": st.session_state.current_user, "date": datetime.now()})
+                add_transaction("gider", amount, selected_label, note)
                 st.session_state.entry_mode = None
                 st.rerun()
 
-    # Son İşlemler (AÇILIR KAPANIR LİSTE - MOBİL UYUMLU)
     if not df.empty:
         st.markdown("#### 🕓 Son İşlemler")
         recent = df[(df["type"]=="gelir") | (df["type"]=="gider")].sort_values("date", ascending=False).head(10)
         for _, row in recent.iterrows():
             
-            # Silme Onay Kutusu
             if st.session_state.delete_confirm_id == row['id']:
                 st.markdown("<div class='delete-box'><b>Bu işlemi silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                 c_y, c_n = st.columns(2)
@@ -213,7 +302,6 @@ def page_ana_sayfa():
                         st.session_state.delete_confirm_id = None
                         st.rerun()
             
-            # Düzenleme Kutusu
             elif st.session_state.edit_txn_id == row['id']:
                 st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                 new_amt = st.number_input("Tutar (₺)", value=float(row['amount']), key=f"amt_{row['id']}")
@@ -234,7 +322,6 @@ def page_ana_sayfa():
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-            # Normal Görünüm (AÇILIR KUTU İÇİNDE)
             else:
                 ikon = "🟢" if row["type"] == "gelir" else "🔴"
                 isaret = "+" if row["type"] == "gelir" else "-"
@@ -242,19 +329,13 @@ def page_ana_sayfa():
                 
                 with st.expander(baslik):
                     st.markdown(f"<span style='color:#7C8AA5; font-size:0.95rem;'><b>Tarih:</b> {row['date'].strftime('%d %B - %H:%M')}</span>", unsafe_allow_html=True)
-                    if row['note']:
-                        st.markdown(f"**Not:** {row['note']}")
-                    
-                    st.write("") # Görsel boşluk
+                    if row['note']: st.markdown(f"**Not:** {row['note']}")
+                    st.write("") 
                     c_ed, c_del = st.columns(2)
                     with c_ed:
-                        if st.button("✏️ Düzenle", key=f"ed_{row['id']}", use_container_width=True):
-                            st.session_state.edit_txn_id = row['id']
-                            st.rerun()
+                        if st.button("✏️ Düzenle", key=f"ed_{row['id']}", use_container_width=True): st.session_state.edit_txn_id = row['id']; st.rerun()
                     with c_del:
-                        if st.button("🗑️ Sil", key=f"del_{row['id']}", use_container_width=True):
-                            st.session_state.delete_confirm_id = row['id']
-                            st.rerun()
+                        if st.button("🗑️ Sil", key=f"del_{row['id']}", use_container_width=True): st.session_state.delete_confirm_id = row['id']; st.rerun()
 
 def page_ozetler():
     st.markdown("## 📊 Özetler")
@@ -275,7 +356,6 @@ def page_ozetler():
 
     tab1, tab2 = st.tabs(["💸 Harcamalar", "💚 Gelirler"])
     
-    # HARCAMALAR
     with tab1:
         df_gider = df[df["type"] == "gider"]
         if not df_gider.empty:
@@ -288,7 +368,6 @@ def page_ozetler():
             st.plotly_chart(fig, use_container_width=True)
         else: st.info("Bu dönem için harcama yok.")
             
-    # GELİRLER
     with tab2:
         df_gelir = df[df["type"] == "gelir"]
         if not df_gelir.empty:
@@ -301,7 +380,6 @@ def page_ozetler():
                 st.write("**Aylara Göre Gelir Toplamı**")
                 df_gelir["Ay"] = df_gelir["date"].dt.month.map(AYLAR)
                 grp = df_gelir.groupby("Ay", as_index=False)["amount"].sum()
-                # Aylar sırası
                 ay_sirasi = list(AYLAR.values())
                 grp['Ay'] = pd.Categorical(grp['Ay'], categories=ay_sirasi, ordered=True)
                 grp = grp.sort_values("Ay")
@@ -342,7 +420,7 @@ def page_birikim():
             note = st.text_input("Açıklama (Hangi ayın birikimi vb.)")
             if st.form_submit_button("Ekle", use_container_width=True):
                 if amt>0:
-                    st.session_state.transactions.append({"id": str(uuid.uuid4()), "type": "birikim_arti", "amount": float(amt), "category": "➕ Birikim Eklendi", "note": note, "user": st.session_state.current_user, "date": datetime.now()})
+                    add_transaction("birikim_arti", amt, "➕ Birikim Eklendi", note)
                     st.session_state.birikim_mode = None
                     st.rerun()
                     
@@ -353,7 +431,7 @@ def page_birikim():
             note = st.text_input("Ne için harcandı? (Örn: Bilgisayar)")
             if st.form_submit_button("Harca", use_container_width=True):
                 if amt>0:
-                    st.session_state.transactions.append({"id": str(uuid.uuid4()), "type": "birikim_eksi", "amount": float(amt), "category": "➖ Birikim Harcandı", "note": note, "user": st.session_state.current_user, "date": datetime.now()})
+                    add_transaction("birikim_eksi", amt, "➖ Birikim Harcandı", note)
                     st.session_state.birikim_mode = None
                     st.rerun()
 
@@ -364,7 +442,6 @@ def page_birikim():
             st.markdown("#### 📜 Birikim Geçmişi")
             for _, row in df_b.iterrows():
                 
-                # Silme Onay Kutusu
                 if st.session_state.delete_confirm_id == row['id']:
                     st.markdown("<div class='delete-box'><b>Bu işlemi silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                     c_y, c_n = st.columns(2)
@@ -378,7 +455,6 @@ def page_birikim():
                             st.session_state.delete_confirm_id = None
                             st.rerun()
                 
-                # Düzenleme Kutusu
                 elif st.session_state.edit_txn_id == row['id']:
                     st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                     new_amt = st.number_input("Tutar (₺)", value=float(row['amount']), key=f"amt_{row['id']}")
@@ -395,7 +471,6 @@ def page_birikim():
                             st.rerun()
                     st.markdown("</div>", unsafe_allow_html=True)
                     
-                # Normal Görünüm (AÇILIR KUTU İÇİNDE)
                 else:
                     ikon = "🟢" if row["type"] == "birikim_arti" else "🔴"
                     isaret = "+" if row["type"] == "birikim_arti" else "-"
@@ -403,16 +478,13 @@ def page_birikim():
                     
                     with st.expander(baslik):
                         st.markdown(f"<span style='color:#7C8AA5; font-size:0.95rem;'><b>Tarih:</b> {row['date'].strftime('%d %B - %H:%M')}</span>", unsafe_allow_html=True)
-                        if row['note']:
-                            st.markdown(f"**Not:** {row['note']}")
-                        
+                        if row['note']: st.markdown(f"**Not:** {row['note']}")
                         st.write("") 
                         c_ed, c_del = st.columns(2)
                         with c_ed:
                             if st.button("✏️ Düzenle", key=f"eb_{row['id']}", use_container_width=True): st.session_state.edit_txn_id = row['id']; st.rerun()
                         with c_del:
-                            if st.button("🗑️ Sil", key=f"db_{row['id']}", use_container_width=True): 
-                                st.session_state.delete_confirm_id = row['id']; st.rerun()
+                            if st.button("🗑️ Sil", key=f"db_{row['id']}", use_container_width=True): st.session_state.delete_confirm_id = row['id']; st.rerun()
 
 def page_istek_listesi():
     st.markdown("## 🎁 İstek Listesi")
@@ -423,20 +495,19 @@ def page_istek_listesi():
         with c2: tutar = st.number_input("Tahmini Tutar (₺)", min_value=0.0, step=10.0)
         if st.form_submit_button("➕ İsteği Ekle", use_container_width=True):
             if item.strip():
-                st.session_state.wishlist.append({"id": str(uuid.uuid4()), "user": st.session_state.current_user, "item": item.strip(), "category": kategori, "amount": tutar, "date": datetime.now(), "seen": False})
+                add_wish(item, kategori, tutar)
                 st.rerun()
                 
     if st.session_state.wishlist:
         st.write("---")
         for i, wl in enumerate(sorted(st.session_state.wishlist, key=lambda x: x["date"], reverse=True)):
             
-            # Silme Onay Kutusu
             if st.session_state.delete_confirm_id == wl['id']:
                 st.markdown("<div class='delete-box'><b>Bu isteği silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                 c_y, c_n = st.columns(2)
                 with c_y:
                     if st.button("Evet, Sil", key=f"dy_{wl['id']}", use_container_width=True):
-                        st.session_state.wishlist = [w for w in st.session_state.wishlist if w['id'] != wl['id']]
+                        delete_wish(wl['id'])
                         st.session_state.delete_confirm_id = None
                         st.rerun()
                 with c_n:
@@ -444,7 +515,6 @@ def page_istek_listesi():
                         st.session_state.delete_confirm_id = None
                         st.rerun()
                         
-            # Düzenleme Kutusu
             elif st.session_state.edit_wish_id == wl['id']:
                 st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                 new_item = st.text_input("İstek", value=wl['item'], key=f"wi_{wl['id']}")
@@ -452,10 +522,7 @@ def page_istek_listesi():
                 c_sv, c_cx = st.columns(2)
                 with c_sv:
                     if st.button("💾 Kaydet", key=f"ws_{wl['id']}", use_container_width=True):
-                        for k, w in enumerate(st.session_state.wishlist):
-                            if w['id'] == wl['id']:
-                                st.session_state.wishlist[k]['item'] = new_item
-                                st.session_state.wishlist[k]['amount'] = float(new_amt)
+                        update_wish(wl['id'], new_item, new_amt)
                         st.session_state.edit_wish_id = None
                         st.rerun()
                 with c_cx:
@@ -464,20 +531,17 @@ def page_istek_listesi():
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-            # Normal Görünüm (AÇILIR KUTU İÇİNDE)
             else:
                 baslik = f"🎁 {wl['item']} | {wl['user']} | ₺{wl['amount']:,.2f}"
                 with st.expander(baslik):
                     st.markdown(f"**Kategori:** {wl['category']}")
                     st.markdown(f"<span style='color:#7C8AA5; font-size:0.95rem;'><b>Eklenme:</b> {wl['date'].strftime('%d %B - %H:%M')}</span>", unsafe_allow_html=True)
-                    
                     st.write("")
                     c_ed, c_del = st.columns(2)
                     with c_ed:
                         if st.button("✏️ Düzenle", key=f"ew_{wl['id']}", use_container_width=True): st.session_state.edit_wish_id = wl['id']; st.rerun()
                     with c_del:
-                        if st.button("🗑️ Sil", key=f"dw_{wl['id']}", use_container_width=True): 
-                            st.session_state.delete_confirm_id = wl['id']; st.rerun()
+                        if st.button("🗑️ Sil", key=f"dw_{wl['id']}", use_container_width=True): st.session_state.delete_confirm_id = wl['id']; st.rerun()
 
 # =========================================================
 # ANA YAPI & MENÜ ÇAĞIRMA
@@ -498,14 +562,23 @@ else:
         elif ch.endswith("Birikim"): hedef_sayfa = "Birikim"
         else:
             hedef_sayfa = "İstek Listesi"
-            for w in st.session_state.wishlist: w["seen"] = True
+            needs_sync = False
+            for w in st.session_state.wishlist: 
+                if not w["seen"]:
+                    w["seen"] = True
+                    needs_sync = True
+            if needs_sync: sync_wishlist()
             
-        # Çift tıklama sorununu çözen anında yenileme kodu:
         if st.session_state.page != hedef_sayfa:
             st.session_state.page = hedef_sayfa
             st.rerun()
             
         st.markdown("---")
+        if st.button("🔄 Verileri Yenile", use_container_width=True):
+            with st.spinner("Buluttan güncel veriler çekiliyor..."):
+                load_data_from_sheets()
+            st.rerun()
+
         if st.button("🚪 Çıkış Yap", use_container_width=True):
             st.session_state.current_user = None
             st.session_state.page = "Ana Sayfa"
@@ -517,4 +590,3 @@ else:
     elif st.session_state.page == "Özetler": page_ozetler()
     elif st.session_state.page == "Birikim": page_birikim()
     elif st.session_state.page == "İstek Listesi": page_istek_listesi()
-        
