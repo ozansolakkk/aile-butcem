@@ -14,12 +14,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-USERS = ["Kenan", "Tabibe", "Abla", "Ozan"]
+USERS = ["Kenan", "Tabibe", "Nilgün", "Ozan"]
 
 USER_COLORS = {
     "Kenan": ("#AEE1F9", "#3A6EA5"),
     "Tabibe": ("#F9C9D6", "#B5495B"),
-    "Abla": ("#D9C9F9", "#6C4A9C"),
+    "Nilgün": ("#D9C9F9", "#6C4A9C"),
     "Ozan": ("#C9F9D6", "#3A8C5A"),
 }
 
@@ -32,7 +32,7 @@ CATEGORIES = [
     {"key": "saglik", "label": "Sağlık", "emoji": "💊", "color": "#FDE2E2"},
     {"key": "fatura", "label": "Fatura", "emoji": "🧾", "color": "#E2F6F6"},
     {"key": "eglence", "label": "Eğlence", "emoji": "🎉", "color": "#FCEBD6"},
-    {"key": "birikim", "label": "Birikim", "emoji": "🐷", "color": "#F3E9DC"},
+    {"key": "birikim", "label": "Birikim", "emoji": "🪙", "color": "#F3E9DC"},
     {"key": "diger", "label": "Diğer", "emoji": "🔖", "color": "#ECECEC"},
 ]
 CATEGORY_LABELS = [f'{c["emoji"]} {c["label"]}' for c in CATEGORIES]
@@ -272,7 +272,7 @@ def sidebar_nav():
         if has_unseen_wishlist():
             wishlist_label += " 🔴"
 
-        options = ["🏠 Ana Sayfa", "📊 Özetler", "🐷 Birikim", wishlist_label]
+        options = ["🏠 Ana Sayfa", "📊 Özetler", "🪙 Birikim", wishlist_label]
         current_map = {
             "Ana Sayfa": 0,
             "Özetler": 1,
@@ -365,19 +365,30 @@ def page_ana_sayfa():
         st.markdown("---")
         st.markdown("#### 🕓 Son İşlemler")
         recent = df.sort_values("date", ascending=False).head(6)
-        for _, row in recent.iterrows():
-            renk = "#2F8C4A" if row["type"] == "gelir" else "#B5495B"
-            isaret = "+" if row["type"] == "gelir" else "-"
-            st.markdown(
-                f"""
-                <div class="soft-card">
-                    <b>{row['category']}</b> — {row['user']}<br>
-                    <span style="color:{renk}; font-weight:700;">{isaret}₺{row['amount']:,.2f}</span>
-                    <span style="color:#9AA5B8; font-size:0.85rem;"> · {row['date'].strftime('%d %b %H:%M')}</span>
-                    {f"<br><i>{row['note']}</i>" if row['note'] else ""}
-                </div>
-                """,
-                unsafe_allow_html=True,
+       for _, row in recent.iterrows():
+            col1, col2 = st.columns([0.85, 0.15], gap="small")
+            
+            with col1:
+                renk = "#2F8C4A" if row["type"] == "gelir" else "#B5495B"
+                isaret = "+" if row["type"] == "gelir" else "-"
+                st.markdown(
+                    f"""
+                    <div class="soft-card" style="margin-bottom: 0px;">
+                        <b>{row['category']}</b> — {row['user']}<br>
+                        <span style="color:{renk}; font-weight:700;">{isaret}₺{row['amount']:,.2f}</span>
+                        <span style="color:#9AA5B8; font-size:0.85rem;"> · {row['date'].strftime('%d %b %H:%M')}</span>
+                        {f"<br><i>{row['note']}</i>" if row['note'] else ""}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            
+            with col2:
+                # Butonu estetik olarak kartın ortasına hizalamak için boşluk
+                st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+                if st.button("🗑️", key=f"del_{row['id']}"):
+                    st.session_state.transactions = [t for t in st.session_state.transactions if t['id'] != row['id']]
+                    st.rerun()
             )
 
 
@@ -454,7 +465,7 @@ def page_ozetler():
 # BİRİKİM
 # =========================================================
 def page_birikim():
-    st.markdown("## 🐷 Birikim")
+    st.markdown("## 🪙 Birikim")
 
     toplam = total_savings()
     st.markdown(
@@ -471,7 +482,7 @@ def page_birikim():
     df = df[(df["type"] == "gider") & (df["category"].str.contains("Birikim", na=False))].copy()
 
     if df.empty:
-        st.info("Henüz birikim eklenmedi. Harcama girişinde 🐷 Birikim kategorisini seçerek ekleyebilirsin.")
+        st.info("Henüz birikim eklenmedi. Harcama girişinde 🪙 Birikim kategorisini seçerek ekleyebilirsin.")
         return
 
     df["date"] = pd.to_datetime(df["date"])
