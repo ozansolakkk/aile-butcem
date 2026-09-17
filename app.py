@@ -389,7 +389,7 @@ def page_ana_sayfa():
                 if st.button("🗑️", key=f"del_{row['id']}"):
                     st.session_state.transactions = [t for t in st.session_state.transactions if t['id'] != row['id']]
                     st.rerun()
-            )
+            
 
 
 # =========================================================
