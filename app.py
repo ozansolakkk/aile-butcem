@@ -61,7 +61,7 @@ def init_state():
 init_state()
 
 # =========================================================
-# CSS (TASARIM VE MOBİL HİZALAMA)
+# CSS 
 # =========================================================
 st.markdown(
     """
@@ -70,7 +70,7 @@ st.markdown(
         .block-container { padding-left: 1rem !important; padding-right: 1rem !important; padding-top: 1rem !important; }
         html, body, [class*="css"] { font-size: 15px; }
     }
-    .stApp { background: linear-gradient(180deg, #FBFAF7 0%, #F4F6FB 100%); overflow-x: hidden; }
+    .stApp { background: linear-gradient(180deg, #FBFAF7 0%, #F4F6FB 100%); }
     
     div.stButton > button, div.stFormSubmitButton > button {
         border-radius: 16px; border: none; padding: 0.7rem 1rem; font-weight: 600;
@@ -93,43 +93,9 @@ st.markdown(
     .edit-box { background: #F8F9FA; border: 2px dashed #D2D6DC; border-radius: 16px; padding: 1rem; margin-bottom: 0.6rem; }
     .delete-box { background: #FDF2F2; border: 2px dashed #B5495B; border-radius: 16px; padding: 1rem; margin-bottom: 0.6rem; text-align: center;}
     
-    /* -----------------------------------------------------
-       YENİ VE KESİN ÇÖZÜM: TAŞMAYI ÖNLEYEN BALON HİLESİ
-       ----------------------------------------------------- */
-    div[data-testid="stHorizontalBlock"]:has(.txn-row) {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-        background: #FFFFFF !important;
-        border-radius: 16px !important;
-        padding: 0.5rem !important;
-        margin-bottom: 0.6rem !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-        gap: 5px !important;
-    }
-    div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"] {
-        min-width: 0 !important;
-        width: auto !important;
-        flex-shrink: 0 !important;
-    }
-    /* Birinci sütun (Yazı kısmı) tüm boşluğu kaplasın, taşmayı engellesin */
-    div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"]:nth-child(1) {
-        flex: 1 1 0% !important;
-        padding-left: 0.2rem !important;
-    }
-    /* Butonlardaki fazlalıkları temizle */
-    div[data-testid="stHorizontalBlock"]:has(.txn-row) .stButton > button {
-        padding: 0.4rem 0.6rem !important;
-        margin: 0 !important;
-    }
-    .txn-row {
-        margin: 0; padding: 0; line-height: 1.3;
-        white-space: normal; /* Yazı çok uzunsa alt satıra geçsin */
-        word-wrap: break-word;
-    }
+    /* Expander şıklaştırması */
+    div[data-testid="stExpander"] { background: #FFFFFF; border-radius: 16px !important; border: 1px solid #E5E8F0 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03); margin-bottom: 0.8rem !important; }
+    div[data-testid="stExpander"] summary { font-weight: 600; color: #33415C; }
     </style>
     """, unsafe_allow_html=True
 )
@@ -227,12 +193,13 @@ def page_ana_sayfa():
                 st.session_state.entry_mode = None
                 st.rerun()
 
-    # Son İşlemler (Edit / Delete)
+    # Son İşlemler (AÇILIR KAPANIR LİSTE - MOBİL UYUMLU)
     if not df.empty:
         st.markdown("#### 🕓 Son İşlemler")
         recent = df[(df["type"]=="gelir") | (df["type"]=="gider")].sort_values("date", ascending=False).head(10)
         for _, row in recent.iterrows():
             
+            # Silme Onay Kutusu
             if st.session_state.delete_confirm_id == row['id']:
                 st.markdown("<div class='delete-box'><b>Bu işlemi silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                 c_y, c_n = st.columns(2)
@@ -246,6 +213,7 @@ def page_ana_sayfa():
                         st.session_state.delete_confirm_id = None
                         st.rerun()
             
+            # Düzenleme Kutusu
             elif st.session_state.edit_txn_id == row['id']:
                 st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                 new_amt = st.number_input("Tutar (₺)", value=float(row['amount']), key=f"amt_{row['id']}")
@@ -266,26 +234,27 @@ def page_ana_sayfa():
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
                 
+            # Normal Görünüm (AÇILIR KUTU İÇİNDE)
             else:
-                rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15])
-                with rc1:
-                    renk = "#2F8C4A" if row["type"] == "gelir" else "#B5495B"
-                    isaret = "+" if row["type"] == "gelir" else "-"
-                    st.markdown(f"""
-                        <div class="txn-row">
-                            <b>{row['category']}</b> — {row['user']}<br>
-                            <span style="color:{renk}; font-weight:700;">{isaret}₺{row['amount']:,.2f}</span>
-                            <span style="color:#9AA5B8; font-size:0.85rem;"> · {row['date'].strftime('%d %b')}</span>
-                            {f"<br><i>{row['note']}</i>" if row['note'] else ""}
-                        </div>""", unsafe_allow_html=True)
-                with rc2:
-                    if st.button("✏️", key=f"ed_{row['id']}", use_container_width=True):
-                        st.session_state.edit_txn_id = row['id']
-                        st.rerun()
-                with rc3:
-                    if st.button("🗑️", key=f"del_{row['id']}", use_container_width=True):
-                        st.session_state.delete_confirm_id = row['id']
-                        st.rerun()
+                ikon = "🟢" if row["type"] == "gelir" else "🔴"
+                isaret = "+" if row["type"] == "gelir" else "-"
+                baslik = f"{ikon} {row['category']} | {row['user']} | {isaret}₺{row['amount']:,.2f}"
+                
+                with st.expander(baslik):
+                    st.markdown(f"<span style='color:#7C8AA5; font-size:0.95rem;'><b>Tarih:</b> {row['date'].strftime('%d %B - %H:%M')}</span>", unsafe_allow_html=True)
+                    if row['note']:
+                        st.markdown(f"**Not:** {row['note']}")
+                    
+                    st.write("") # Görsel boşluk
+                    c_ed, c_del = st.columns(2)
+                    with c_ed:
+                        if st.button("✏️ Düzenle", key=f"ed_{row['id']}", use_container_width=True):
+                            st.session_state.edit_txn_id = row['id']
+                            st.rerun()
+                    with c_del:
+                        if st.button("🗑️ Sil", key=f"del_{row['id']}", use_container_width=True):
+                            st.session_state.delete_confirm_id = row['id']
+                            st.rerun()
 
 def page_ozetler():
     st.markdown("## 📊 Özetler")
@@ -395,6 +364,7 @@ def page_birikim():
             st.markdown("#### 📜 Birikim Geçmişi")
             for _, row in df_b.iterrows():
                 
+                # Silme Onay Kutusu
                 if st.session_state.delete_confirm_id == row['id']:
                     st.markdown("<div class='delete-box'><b>Bu işlemi silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                     c_y, c_n = st.columns(2)
@@ -408,6 +378,7 @@ def page_birikim():
                             st.session_state.delete_confirm_id = None
                             st.rerun()
                 
+                # Düzenleme Kutusu
                 elif st.session_state.edit_txn_id == row['id']:
                     st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                     new_amt = st.number_input("Tutar (₺)", value=float(row['amount']), key=f"amt_{row['id']}")
@@ -424,23 +395,24 @@ def page_birikim():
                             st.rerun()
                     st.markdown("</div>", unsafe_allow_html=True)
                     
+                # Normal Görünüm (AÇILIR KUTU İÇİNDE)
                 else:
-                    rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15])
-                    with rc1:
-                        renk = "#2F8C4A" if row["type"] == "birikim_arti" else "#B5495B"
-                        isaret = "+" if row["type"] == "birikim_arti" else "-"
-                        st.markdown(f"""
-                            <div class="txn-row">
-                                <b>{row['category']}</b><br>
-                                <span style="color:{renk}; font-weight:700;">{isaret}₺{row['amount']:,.2f}</span>
-                                <span style="color:#9AA5B8; font-size:0.85rem;"> · {row['date'].strftime('%d %b')}</span>
-                                {f"<br><i>{row['note']}</i>" if row['note'] else ""}
-                            </div>""", unsafe_allow_html=True)
-                    with rc2:
-                        if st.button("✏️", key=f"eb_{row['id']}", use_container_width=True): st.session_state.edit_txn_id = row['id']; st.rerun()
-                    with rc3:
-                        if st.button("🗑️", key=f"db_{row['id']}", use_container_width=True): 
-                            st.session_state.delete_confirm_id = row['id']; st.rerun()
+                    ikon = "🟢" if row["type"] == "birikim_arti" else "🔴"
+                    isaret = "+" if row["type"] == "birikim_arti" else "-"
+                    baslik = f"{ikon} {row['category']} | {isaret}₺{row['amount']:,.2f}"
+                    
+                    with st.expander(baslik):
+                        st.markdown(f"<span style='color:#7C8AA5; font-size:0.95rem;'><b>Tarih:</b> {row['date'].strftime('%d %B - %H:%M')}</span>", unsafe_allow_html=True)
+                        if row['note']:
+                            st.markdown(f"**Not:** {row['note']}")
+                        
+                        st.write("") 
+                        c_ed, c_del = st.columns(2)
+                        with c_ed:
+                            if st.button("✏️ Düzenle", key=f"eb_{row['id']}", use_container_width=True): st.session_state.edit_txn_id = row['id']; st.rerun()
+                        with c_del:
+                            if st.button("🗑️ Sil", key=f"db_{row['id']}", use_container_width=True): 
+                                st.session_state.delete_confirm_id = row['id']; st.rerun()
 
 def page_istek_listesi():
     st.markdown("## 🎁 İstek Listesi")
@@ -458,6 +430,7 @@ def page_istek_listesi():
         st.write("---")
         for i, wl in enumerate(sorted(st.session_state.wishlist, key=lambda x: x["date"], reverse=True)):
             
+            # Silme Onay Kutusu
             if st.session_state.delete_confirm_id == wl['id']:
                 st.markdown("<div class='delete-box'><b>Bu isteği silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                 c_y, c_n = st.columns(2)
@@ -471,6 +444,7 @@ def page_istek_listesi():
                         st.session_state.delete_confirm_id = None
                         st.rerun()
                         
+            # Düzenleme Kutusu
             elif st.session_state.edit_wish_id == wl['id']:
                 st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                 new_item = st.text_input("İstek", value=wl['item'], key=f"wi_{wl['id']}")
@@ -490,20 +464,20 @@ def page_istek_listesi():
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
                 
+            # Normal Görünüm (AÇILIR KUTU İÇİNDE)
             else:
-                rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15])
-                with rc1:
-                    st.markdown(f"""
-                        <div class="txn-row">
-                            <b>{wl['item']}</b> — {wl['category']}<br>
-                            <span style="color:#7C8AA5;">👤 {wl['user']}</span>
-                            <span style="float:right; font-weight:700; color:#33415C;">₺{wl['amount']:,.2f}</span>
-                        </div>""", unsafe_allow_html=True)
-                with rc2:
-                    if st.button("✏️", key=f"ew_{wl['id']}", use_container_width=True): st.session_state.edit_wish_id = wl['id']; st.rerun()
-                with rc3:
-                    if st.button("🗑️", key=f"dw_{wl['id']}", use_container_width=True): 
-                        st.session_state.delete_confirm_id = wl['id']; st.rerun()
+                baslik = f"🎁 {wl['item']} | {wl['user']} | ₺{wl['amount']:,.2f}"
+                with st.expander(baslik):
+                    st.markdown(f"**Kategori:** {wl['category']}")
+                    st.markdown(f"<span style='color:#7C8AA5; font-size:0.95rem;'><b>Eklenme:</b> {wl['date'].strftime('%d %B - %H:%M')}</span>", unsafe_allow_html=True)
+                    
+                    st.write("")
+                    c_ed, c_del = st.columns(2)
+                    with c_ed:
+                        if st.button("✏️ Düzenle", key=f"ew_{wl['id']}", use_container_width=True): st.session_state.edit_wish_id = wl['id']; st.rerun()
+                    with c_del:
+                        if st.button("🗑️ Sil", key=f"dw_{wl['id']}", use_container_width=True): 
+                            st.session_state.delete_confirm_id = wl['id']; st.rerun()
 
 # =========================================================
 # ANA YAPI & MENÜ ÇAĞIRMA
