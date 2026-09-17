@@ -70,7 +70,7 @@ st.markdown(
         .block-container { padding-left: 1rem !important; padding-right: 1rem !important; padding-top: 1rem !important; }
         html, body, [class*="css"] { font-size: 15px; }
     }
-    .stApp { background: linear-gradient(180deg, #FBFAF7 0%, #F4F6FB 100%); }
+    .stApp { background: linear-gradient(180deg, #FBFAF7 0%, #F4F6FB 100%); overflow-x: hidden; }
     
     div.stButton > button, div.stFormSubmitButton > button {
         border-radius: 16px; border: none; padding: 0.7rem 1rem; font-weight: 600;
@@ -94,36 +94,41 @@ st.markdown(
     .delete-box { background: #FDF2F2; border: 2px dashed #B5495B; border-radius: 16px; padding: 1rem; margin-bottom: 0.6rem; text-align: center;}
     
     /* -----------------------------------------------------
-       YENİ: İŞLEM SATIRLARINI TEK BİR BALON YAPMA HİLESİ
+       YENİ VE KESİN ÇÖZÜM: TAŞMAYI ÖNLEYEN BALON HİLESİ
        ----------------------------------------------------- */
     div[data-testid="stHorizontalBlock"]:has(.txn-row) {
+        display: flex !important;
+        flex-direction: row !important;
         flex-wrap: nowrap !important;
+        align-items: center !important;
         background: #FFFFFF !important;
         border-radius: 16px !important;
-        padding: 0.5rem 0.5rem 0.5rem 1rem !important;
+        padding: 0.5rem !important;
         margin-bottom: 0.6rem !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-        align-items: center !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        gap: 5px !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(.txn-row) .txn-row {
-        margin: 0; padding: 0; line-height: 1.4;
+    div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"] {
+        min-width: 0 !important;
+        width: auto !important;
+        flex-shrink: 0 !important;
     }
-    @media (max-width: 640px) {
-        div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"] {
-            min-width: 0 !important;
-        }
-        /* Yazı kısmına ekranın %66'sını ver */
-        div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"]:nth-child(1) {
-            width: 66% !important; flex: 1 1 66% !important;
-        }
-        /* Edit ve Sil butonlarına ufak yer ayır */
-        div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"]:nth-child(2),
-        div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"]:nth-child(3) {
-            width: 17% !important; flex: 0 0 17% !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has(.txn-row) .stButton > button {
-            padding: 0.5rem 0 !important;
-        }
+    /* Birinci sütun (Yazı kısmı) tüm boşluğu kaplasın, taşmayı engellesin */
+    div[data-testid="stHorizontalBlock"]:has(.txn-row) > div[data-testid="column"]:nth-child(1) {
+        flex: 1 1 0% !important;
+        padding-left: 0.2rem !important;
+    }
+    /* Butonlardaki fazlalıkları temizle */
+    div[data-testid="stHorizontalBlock"]:has(.txn-row) .stButton > button {
+        padding: 0.4rem 0.6rem !important;
+        margin: 0 !important;
+    }
+    .txn-row {
+        margin: 0; padding: 0; line-height: 1.3;
+        white-space: normal; /* Yazı çok uzunsa alt satıra geçsin */
+        word-wrap: break-word;
     }
     </style>
     """, unsafe_allow_html=True
@@ -228,7 +233,6 @@ def page_ana_sayfa():
         recent = df[(df["type"]=="gelir") | (df["type"]=="gider")].sort_values("date", ascending=False).head(10)
         for _, row in recent.iterrows():
             
-            # Silme Onay Kutusu
             if st.session_state.delete_confirm_id == row['id']:
                 st.markdown("<div class='delete-box'><b>Bu işlemi silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                 c_y, c_n = st.columns(2)
@@ -242,7 +246,6 @@ def page_ana_sayfa():
                         st.session_state.delete_confirm_id = None
                         st.rerun()
             
-            # Düzenleme Kutusu
             elif st.session_state.edit_txn_id == row['id']:
                 st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                 new_amt = st.number_input("Tutar (₺)", value=float(row['amount']), key=f"amt_{row['id']}")
@@ -263,9 +266,8 @@ def page_ana_sayfa():
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-            # Normal Görünüm (TEK BALON İÇİNDE)
             else:
-                rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15], gap="small")
+                rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15])
                 with rc1:
                     renk = "#2F8C4A" if row["type"] == "gelir" else "#B5495B"
                     isaret = "+" if row["type"] == "gelir" else "-"
@@ -393,7 +395,6 @@ def page_birikim():
             st.markdown("#### 📜 Birikim Geçmişi")
             for _, row in df_b.iterrows():
                 
-                # Silme Onay Kutusu
                 if st.session_state.delete_confirm_id == row['id']:
                     st.markdown("<div class='delete-box'><b>Bu işlemi silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                     c_y, c_n = st.columns(2)
@@ -407,7 +408,6 @@ def page_birikim():
                             st.session_state.delete_confirm_id = None
                             st.rerun()
                 
-                # Düzenleme Kutusu
                 elif st.session_state.edit_txn_id == row['id']:
                     st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                     new_amt = st.number_input("Tutar (₺)", value=float(row['amount']), key=f"amt_{row['id']}")
@@ -424,9 +424,8 @@ def page_birikim():
                             st.rerun()
                     st.markdown("</div>", unsafe_allow_html=True)
                     
-                # Normal Görünüm (TEK BALON İÇİNDE)
                 else:
-                    rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15], gap="small")
+                    rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15])
                     with rc1:
                         renk = "#2F8C4A" if row["type"] == "birikim_arti" else "#B5495B"
                         isaret = "+" if row["type"] == "birikim_arti" else "-"
@@ -459,7 +458,6 @@ def page_istek_listesi():
         st.write("---")
         for i, wl in enumerate(sorted(st.session_state.wishlist, key=lambda x: x["date"], reverse=True)):
             
-            # Silme Onay Kutusu
             if st.session_state.delete_confirm_id == wl['id']:
                 st.markdown("<div class='delete-box'><b>Bu isteği silmek istediğine emin misin?</b></div>", unsafe_allow_html=True)
                 c_y, c_n = st.columns(2)
@@ -473,7 +471,6 @@ def page_istek_listesi():
                         st.session_state.delete_confirm_id = None
                         st.rerun()
                         
-            # Düzenleme Kutusu
             elif st.session_state.edit_wish_id == wl['id']:
                 st.markdown("<div class='edit-box'>", unsafe_allow_html=True)
                 new_item = st.text_input("İstek", value=wl['item'], key=f"wi_{wl['id']}")
@@ -493,9 +490,8 @@ def page_istek_listesi():
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-            # Normal Görünüm (TEK BALON İÇİNDE)
             else:
-                rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15], gap="small")
+                rc1, rc2, rc3 = st.columns([0.7, 0.15, 0.15])
                 with rc1:
                     st.markdown(f"""
                         <div class="txn-row">
