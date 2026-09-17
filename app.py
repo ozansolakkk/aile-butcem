@@ -299,6 +299,26 @@ def sidebar_nav():
 def page_ana_sayfa():
     st.markdown("## 🏠 Ana Sayfa")
 
+    # --- ANLIK DURUM KARTI ---
+    df = get_df()
+    net_balance = 0.0
+    if not df.empty:
+        gelir_toplam = df[df["type"] == "gelir"]["amount"].sum()
+        gider_toplam = df[df["type"] == "gider"]["amount"].sum()
+        net_balance = gelir_toplam - gider_toplam
+    
+    bakiye_renk = "#2F8C4A" if net_balance >= 0 else "#B5495B"
+    st.markdown(
+        f"""
+        <div class="kasa-total" style="background: #FFFFFF; border: 1px solid #E5E8F0; padding: 1.2rem; margin-bottom: 1.5rem;">
+            <div class="label" style="color: #7C8AA5; font-size: 1rem;">Anlık Durum</div>
+            <div class="amount" style="color: {bakiye_renk}; font-size: 2.3rem;">₺{net_balance:,.2f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # -------------------------
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💚 Gelir Gir", use_container_width=True):
