@@ -492,12 +492,18 @@ else:
         c_map = {"Ana Sayfa": 0, "Özetler": 1, "Birikim": 2, "İstek Listesi": 3}
         ch = st.radio("Menü", options, index=c_map.get(st.session_state.page, 0), label_visibility="collapsed")
         
-        if ch.endswith("Ana Sayfa"): st.session_state.page = "Ana Sayfa"
-        elif ch.endswith("Özetler"): st.session_state.page = "Özetler"
-        elif ch.endswith("Birikim"): st.session_state.page = "Birikim"
+        hedef_sayfa = "Ana Sayfa"
+        if ch.endswith("Ana Sayfa"): hedef_sayfa = "Ana Sayfa"
+        elif ch.endswith("Özetler"): hedef_sayfa = "Özetler"
+        elif ch.endswith("Birikim"): hedef_sayfa = "Birikim"
         else:
-            st.session_state.page = "İstek Listesi"
+            hedef_sayfa = "İstek Listesi"
             for w in st.session_state.wishlist: w["seen"] = True
+            
+        # Çift tıklama sorununu çözen anında yenileme kodu:
+        if st.session_state.page != hedef_sayfa:
+            st.session_state.page = hedef_sayfa
+            st.rerun()
             
         st.markdown("---")
         if st.button("🚪 Çıkış Yap", use_container_width=True):
@@ -511,3 +517,4 @@ else:
     elif st.session_state.page == "Özetler": page_ozetler()
     elif st.session_state.page == "Birikim": page_birikim()
     elif st.session_state.page == "İstek Listesi": page_istek_listesi()
+        
